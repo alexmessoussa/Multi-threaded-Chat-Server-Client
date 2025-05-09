@@ -179,39 +179,38 @@ class ChannelClientHandler:
             # reject! (not sure how to reject because you need to take it out. not let it join the waitlist or clients)
             ...
         
+        
+    
+    
+    def start(self) -> None:
+        # TODO: spin up a running our handler
         send_thread = Thread(target=self.send_handler)
         receive_thread = Thread(target=self.receive_handler)
         
         send_thread.start()
         receive_thread.start()
-    
-    
-    def start(self) -> None:
-        # TODO: spin up a running our handler
-        handler_thread = threading.Thread(target=self._handler)
-        handler_thread.start()
 
 
-    def _handler(self) -> None:
-        # handles receiving messages/comments from client (should this handle ALL non join or non serverside events (aka. quit))
-        while True:
-            event = _Event.deserialise(self.socket.recv(8000))
-             # is this correct?
+    # def _handler(self) -> None:
+    #     # handles receiving messages/comments from client (should this handle ALL non join or non serverside events (aka. quit))
+    #     while True:
+    #         event = _Event.deserialise(self.socket.recv(8000))
+    #          # is this correct?
             
-            match event:
-                case MessageEvent():
-                    ...
-                case QuitEvent():
-                    ...
-                case SendEvent():
-                    ...
-                case WhisperEvent():
-                    ...
-                case ListEvent():
-                    ...
-                case SwitchEvent():
-                    ...
-                #can deal with the right format in the client 
+    #         match event:
+    #             case MessageEvent():
+    #                 ...
+    #             case QuitEvent():
+    #                 ...
+    #             case SendEvent():
+    #                 ...
+    #             case WhisperEvent():
+    #                 ...
+    #             case ListEvent():
+    #                 ...
+    #             case SwitchEvent():
+    #                 ...
+    #             #can deal with the right format in the client 
         
         
     # method to send message to user
