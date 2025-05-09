@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class EventType(IntEnum):
-    QUIT = auto()
+    QUIT = 41
     KICK = auto()
     SHUTDOWN = auto()
     MUTE = auto()
@@ -39,14 +39,14 @@ class _Event(ABC):
 
     @classmethod
     def serialise(cls, obj) -> bytes:
-        return struct.pack("i", obj.type) + obj._serialise()
+        return struct.pack("!I", obj.type) + obj._serialise()
 
     @abstractmethod
     def _serialise(self) -> bytes: ...
 
     @classmethod
     def deserialise(cls, data: bytes) -> _Event:
-        event_type = EventType(struct.unpack("i", data[:4])[0])
+        event_type = EventType(struct.unpack("!I", data[:4])[0])
         return cls._event_map[event_type]._deserialise(data=data[4:])
 
     @classmethod
@@ -62,7 +62,7 @@ class MessageEvent(_Event):
 
     def _serialise(self) -> bytes:
         return struct.pack(
-            f"i{len(self.name)}si{len(self.message)}s",
+            f"!I{len(self.name)}sI{len(self.message)}s",
             len(self.name),
             self.name.encode(),
             len(self.message),
@@ -71,12 +71,12 @@ class MessageEvent(_Event):
 
     @classmethod
     def _deserialise(cls, data: bytes) -> MessageEvent:
-        name_length = struct.unpack("i", data[:4])[0]
+        name_length = struct.unpack("!I", data[:4])[0]
         name = struct.unpack(
             f"{name_length}s",
             data[4 : 4 + name_length],
         )[0].decode()
-        message_length = struct.unpack("i", data[4 + name_length : 8 + name_length])[0]
+        message_length = struct.unpack("!I", data[4 + name_length : 8 + name_length])[0]
         message = struct.unpack(
             f"{message_length}s",
             data[8 + name_length : 8 + name_length + message_length],
@@ -95,14 +95,14 @@ class QuitEvent(_Event):
     
     def _serialise(self):
         return struct.pack(
-            f"i{len(self.name)}s",
+            f"!I{len(self.name)}s",
             len(self.name),
             self.name.encode()
         )
     
     @classmethod
     def _deserialise(cls, data) -> QuitEvent:
-        name_length = struct.unpack("i", data[:4])[0]
+        name_length = struct.unpack("!I", data[:4])[0]
         name = struct.unpack(
             f"{name_length}s",
             data[4 : 4 + name_length],
@@ -189,7 +189,7 @@ class WhisperEvent(_Event):
     
     def _serialise(self):
         return struct.pack(
-            f"i{len(self.name)}si{len(self.target)}si{len(self.message)}s",
+            f"!I{len(self.name)}sI{len(self.target)}sI{len(self.message)}s",
             len(self.name),
             self.name.encode(),
             len(self.target),
@@ -200,17 +200,17 @@ class WhisperEvent(_Event):
     
     @classmethod
     def _deserialise(cls, data) -> WhisperEvent:
-        name_length = struct.unpack("i", data[:4])[0]
+        name_length = struct.unpack("!I", data[:4])[0]
         name = struct.unpack(
             f"{name_length}s",
             data[4 : 4 + name_length],
         )[0].decode()
-        target_length = struct.unpack("i", data[4 + name_length : 8 + name_length])[0]
+        target_length = struct.unpack("!I", data[4 + name_length : 8 + name_length])[0]
         target = struct.unpack(
             f"{target_length}s",
             data[8 + name_length : 8 + name_length + target_length],
         )[0].decode()
-        message_length = struct.unpack("i", data[8 + name_length + target_length : 12 + name_length + target_length])[0]
+        message_length = struct.unpack("!I", data[8 + name_length + target_length : 12 + name_length + target_length])[0]
         message = struct.unpack(
             f"{message_length}s",
             data[12 + name_length + target_length: 12 + name_length + target_length + message_length],
@@ -230,14 +230,14 @@ class ListEvent(_Event):
     
     def _serialise(self):
         return struct.pack(
-            f"i{len(self.name)}s",
+            f"!I{len(self.name)}s",
             len(self.name),
             self.name.encode()
         )
     
     @classmethod
     def _deserialise(cls, data) -> ListEvent:
-        name_length = struct.unpack("i", data[:4])[0]
+        name_length = struct.unpack("!I", data[:4])[0]
         name = struct.unpack(
             f"{name_length}s",
             data[4 : 4 + name_length],
@@ -256,7 +256,7 @@ class SwitchEvent(_Event):
 
     def _serialise(self) -> bytes:
         return struct.pack(
-            f"i{len(self.name)}si{len(self.channel)}s",
+            f"!I{len(self.name)}sI{len(self.channel)}s",
             len(self.name),
             self.name.encode(),
             len(self.channel),
@@ -265,12 +265,12 @@ class SwitchEvent(_Event):
 
     @classmethod
     def _deserialise(cls, data: bytes) -> SwitchEvent:
-        name_length = struct.unpack("i", data[:4])[0]
+        name_length = struct.unpack("!I", data[:4])[0]
         name = struct.unpack(
             f"{name_length}s",
             data[4 : 4 + name_length],
         )[0].decode()
-        channel_length = struct.unpack("i", data[4 + name_length : 8 + name_length])[0]
+        channel_length = struct.unpack("!I", data[4 + name_length : 8 + name_length])[0]
         channel = struct.unpack(
             f"{channel_length}s",
             data[8 + name_length : 8 + name_length + channel_length],
