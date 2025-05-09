@@ -1,10 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+import os
 from re import match
 from queue import Queue
 from socket import *
 import sys
-from threading import Thread
+from threading import Thread,Event as threading_Event
 import threading
 from enum import IntEnum, auto
 from typing import Literal, ClassVar, Type
@@ -56,28 +57,37 @@ class ChannelConfig:
 @dataclass(kw_only=True)
 class ChatServer:
     channel_configs: list[ChannelConfig]
-
-    _channels: list[ChannelServer] = field(default_factory=list) # changed this from = []
+    
+    _channels: list[ChannelServer] = field(default_factory=list, init=False) # changed this from = []
 
     def __post_init__(self) -> None:
         for c in self.channel_configs:
             self._channels.append(
                 ChannelServer(config=c, server=self),
             )
-        
+    
+    def start(self):    
         while True:
             command = input().split()
             #would this be how to wait for commands for server? should i send events to channels and if so, how do i prioritise them perhaps
             
             match command[0]: #this but the first word only. trying to do it 
                 case "/shutdown":
-                    ... # shutdown server
+                    print("shutting down...")
+                    self.shutdown()
+                    print("shutdown channels...")
+                    sys.exit() # shutdown server
                 case "/kick":
                     ...
                 case "/mute":
                     ...
                 case "/empty":
                     ...
+                    
+    def shutdown(self):
+        for channel in self._channels:
+            channel.shutdown()
+            
                 
 
     # Should handle server commands -> Create even in respective ChannelServer
@@ -102,8 +112,8 @@ class ChannelServer:
 
     def __post_init__(self) -> None:
         # TODO: spin up a thread listening on our port
-        listen = threading.Thread(target=self._listen)
-        handle = threading.Thread(target=self._handler)
+        listen = threading.Thread(target=self._listen, daemon=True)
+        handle = threading.Thread(target=self._handler, daemon=True)
         listen.start()
         handle.start()
 
@@ -159,13 +169,17 @@ class ChannelServer:
         message_event = MessageEvent(name="server", message=message)
         for client in self._clients.values():
             client.socket.send(message_event._serialise()) #check to see if this is ok? maybe _Event.serialise?
+    
+    def shutdown(self):
+        for client in self._clients.values():
+            client.shutdown()
 
 
 @dataclass(kw_only=True)
 class ChannelClientHandler:
     socket: socket
     channel: ChannelServer
-    
+
     name: str = field(init=False)
     
     muted: bool = False
@@ -179,15 +193,13 @@ class ChannelClientHandler:
             # reject! (not sure how to reject because you need to take it out. not let it join the waitlist or clients)
             ...
         
-        
+    def shutdown(self):
+        self.socket.close()
     
     
     def start(self) -> None:
         # TODO: spin up a running our handler
-        send_thread = Thread(target=self.send_handler)
-        receive_thread = Thread(target=self.receive_handler)
-        
-        send_thread.start()
+        receive_thread = Thread(target=self.receive_handler, daemon=True)
         receive_thread.start()
 
 
@@ -218,18 +230,12 @@ class ChannelClientHandler:
         message_event = MessageEvent(name="server", message=message)
         self.socket.send(message_event._serialise())
         
+        
     def broadcast(self,message: str):
         ...
-        
-
-    def send_handler(self):
-        while True:
-            message = input().encode()
-            self.send(message)
-           
+            
             
     def send(self,message:bytes):
-
         self.socket.send(message)
         self.socket.send(b'\x00')
             
@@ -246,6 +252,7 @@ class ChannelClientHandler:
             while b'\x00' in buffer:
                 message, buffer = buffer.split(b'\x00', 1)
                 self.receive(message)
+            print("this is active")
         
     
     def receive(self, message:bytes):
@@ -256,4 +263,5 @@ class ChannelClientHandler:
 #start the server here?
 channel_configs = load_channel_configs(sys.argv[2])
 
-ChatServer(channel_configs=channel_configs)
+server = ChatServer(channel_configs=channel_configs)
+server.start()
