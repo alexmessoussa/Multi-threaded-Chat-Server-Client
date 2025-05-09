@@ -54,6 +54,7 @@ class ChannelConfig:
 # assert len(set(c.name for c in SERVER_CONFIG)) == len(SERVER_CONFIG)
 
 
+
 @dataclass(kw_only=True)
 class ChatServer:
     channel_configs: list[ChannelConfig]
@@ -65,6 +66,7 @@ class ChatServer:
             self._channels.append(
                 ChannelServer(config=c, server=self),
             )
+    
     
     def start(self):    
         while True:
@@ -84,15 +86,16 @@ class ChatServer:
                 case "/empty":
                     ...
                     
+                    
     def shutdown(self):
         for channel in self._channels:
-            channel.shutdown()
+            channel.broadcast(ShutdownEvent())
+        #should also send a shutdown event to the client (who cannot send one back) to trigger a client shutdown
             
-                
-
+            
     # Should handle server commands -> Create even in respective ChannelServer
     
-
+    
 
 @dataclass(kw_only=True)
 class ChannelServer:
@@ -165,14 +168,14 @@ class ChannelServer:
         # print any notices that the user has left
         self._clients.pop(name)
         
-    def broadcast(self, message: str) -> None:
-        message_event = MessageEvent(name="server", message=message)
+    def broadcast(self, event: MessageEvent) -> None:
         for client in self._clients.values():
-            client.socket.send(message_event._serialise()) #check to see if this is ok? maybe _Event.serialise?
-    
-    def shutdown(self):
+            if client.name != event.name:
+                client.send(_Event.serialise(event)) #check to see if this is ok? maybe _Event.serialise?
+
+    def shutdown(self) -> None:
         for client in self._clients.values():
-            client.shutdown()
+            client.send(_Event.serialise(ShutdownEvent()))
 
 
 @dataclass(kw_only=True)
@@ -192,16 +195,11 @@ class ChannelClientHandler:
         if self.name in channel_client_names:
             # reject! (not sure how to reject because you need to take it out. not let it join the waitlist or clients)
             ...
-        
-    def shutdown(self):
-        self.socket.close()
-    
     
     def start(self) -> None:
         # TODO: spin up a running our handler
         receive_thread = Thread(target=self.receive_handler, daemon=True)
         receive_thread.start()
-
 
     # def _handler(self) -> None:
     #     # handles receiving messages/comments from client (should this handle ALL non join or non serverside events (aka. quit))
@@ -224,23 +222,16 @@ class ChannelClientHandler:
     #                 ...
     #             #can deal with the right format in the client 
         
-        
     # method to send message to user
     def message(self,message: str):
         message_event = MessageEvent(name="server", message=message)
-        self.socket.send(message_event._serialise())
-        
-        
-    def broadcast(self,message: str):
-        ...
-            
+        self.socket.send(message_event._serialise())        
             
     def send(self,message:bytes):
         self.socket.send(message)
-        self.socket.send(b'\x00')
+        self.socket.send(b'\n')
             
             #probably a match check to see what stuff it wants to send. ie. a message or a command and send that to a method that makes an Event and sends it?
-    
     
     def receive_handler(self):
         buffer = b''
@@ -249,14 +240,27 @@ class ChannelClientHandler:
             if not data:
                 break
             buffer += data
-            while b'\x00' in buffer:
-                message, buffer = buffer.split(b'\x00', 1)
+            while b'\n' in buffer:
+                message, buffer = buffer.split(b'\n', 1)
                 self.receive(message)
-            print("this is active")
-        
+                
     
     def receive(self, message:bytes):
-        print(message.decode())
+        event = _Event.deserialise(message)
+        
+        match event:
+                case MessageEvent():
+                    self.channel.broadcast(event)
+                case QuitEvent():
+                    ...
+                case SendEvent():
+                    ...
+                case WhisperEvent():
+                    ...
+                case ListEvent():
+                    ...
+                case SwitchEvent():
+                    ...
 
 
 
