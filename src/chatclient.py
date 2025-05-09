@@ -22,14 +22,12 @@ class ChatClient:
         
         self.socket.send(argv[2].encode())
         
-        send_thread = Thread(target=self.send_handler)
-        receive_thread = Thread(target=self.receive_handler)
+        receive_thread = Thread(target=self.receive_handler, daemon=True)
         
-        send_thread.start()
         receive_thread.start()
         
 
-    def send_handler(self):
+    def interact(self):
         while True:
             message = input().encode()
             self.send(message)
@@ -59,4 +57,5 @@ class ChatClient:
         print(message.decode())
     
     
-ChatClient()
+client = ChatClient()
+client.interact()
