@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-import os
 from re import match
 from queue import Queue
 from socket import *
@@ -13,6 +12,24 @@ from abc import ABC, abstractmethod
 import struct
 from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,JoinEvent,Event
 from collections.abc import Sequence
+
+def print_usage_and_exit():
+    print("Usage: chatserver [afk_time] config_file", file=sys.stderr, flush=True)
+    sys.exit(4)
+
+def check_args():
+    if len(sys.argv) == 2:
+        pass
+    elif len(sys.argv) == 3:
+        try:
+            afk_timer = int(sys.argv[1])
+            if not (1<= afk_timer <=1000):
+                print_usage_and_exit()
+        except ValueError:
+            print_usage_and_exit()
+    else:
+        print_usage_and_exit()
+
 
 
 def load_channel_configs(filename: str) -> list[ChannelConfig]:
@@ -29,7 +46,9 @@ def load_channel_configs(filename: str) -> list[ChannelConfig]:
                     )
                     configs.append(config)
                 except (ValueError, AssertionError):
-                    print(f"Invalid channel config line: {line.strip()}", file=sys.stderr)
+                    print(f"Error: Invalid configuration file.", file=sys.stderr, flush=True)
+                    sys.exit(5)
+                    
         return configs
     
     
@@ -66,6 +85,7 @@ class ChatServer:
             self._channels.append(
                 ChannelServer(config=c, server=self),
             )
+        print("Welcome to chatserver.", flush=True)
     
     
     def start(self):    
@@ -75,9 +95,9 @@ class ChatServer:
             try:
                 match command[0]: #this but the first word only. trying to do it 
                     case "/shutdown":
-                        print("shutting down...")
+                        print("shutting down...", flush=True)
                         self.shutdown()
-                        print("shutdown channels...")
+                        print("shutdown channels...", flush=True)
                         #sys.exit() # shutdown server
                     case "/kick":
                         ...
@@ -106,7 +126,8 @@ class ChannelServer:
     _clients: dict[str, ChannelClientHandler] = field(default_factory=dict, init=False)
 
     _waitlist: list[ChannelClientHandler] = field(default_factory=list, init=False)
-
+    
+    sock: socket = field(init=False)
     # need to store metadata on the event, e.g., the socket
     _events: Queue[Event] = field(default_factory=Queue, init=False)
     
@@ -116,6 +137,15 @@ class ChannelServer:
 
     def __post_init__(self) -> None:
         # TODO: spin up a thread listening on our port
+        self.sock = socket(AF_INET, SOCK_STREAM)
+        try:
+            self.sock.bind(("", self.config.port))
+            self.sock.listen()
+        except:
+            print(f"Error: unable to listen on port {self.config.port}.", file=sys.stderr, flush=True)
+            sys.exit(6)
+        print(f'Channel "{self.config.name}" is created on port {self.config.port}, with a capacity of {self.config.capacity}.', flush=True)
+        
         listen = threading.Thread(target=self._listen, daemon=True)
         handle = threading.Thread(target=self._handler, daemon=True)
         listen.start()
@@ -124,14 +154,13 @@ class ChannelServer:
     def _listen(self) -> None:
         # this should run in a thread listening on `self.port`
         # when a client joins, queue a join event to `_events`
-        sock = socket(AF_INET, SOCK_STREAM)
-        sock.bind(("", self.config.port))
-        sock.listen()
+        
 
         while True:
-            client_sock, addr = sock.accept()
+            client_sock, addr = self.sock.accept()
             client_handler = ChannelClientHandler(socket=client_sock, channel=self)
             if len(self._clients) >= self.config.capacity:
+                client_handler.send(_Event.serialise(MessageEvent(name="Server Message", message=f"You are in the waiting queue and there are {len(self._waitlist)} user(s) ahead of you.")))
                 self._waitlist.append(client_handler)
                 # notify how many in front of queue
             else:
@@ -158,11 +187,14 @@ class ChannelServer:
                     self._quit(name)
                     if self._waitlist:
                         self._join(self._waitlist.pop(0))
+                        for idx, client in enumerate(self._waitlist):
+                            client.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+
 
     def _join(self, client: ChannelClientHandler) -> None:
         self._clients[client.name] = client
-        print(f'[Server Message] {client.name} has joined the channel "{self.config.name}"')      
-        client.start()
+        print(f'[Server Message] {client.name} has joined the channel "{self.config.name}".', flush=True)      
+        client.join()
         # notify user/server
 
     def _quit(self, name) -> None:
@@ -170,12 +202,9 @@ class ChannelServer:
         # print any notices that the user has left
         self._clients.pop(name)
         
-    def broadcast(self, event: Event, exclude_names: set[str] | None = None) -> None:
-        if exclude_names is None:
-            exclude_names = set()
+    def broadcast(self, event: Event) -> None:
         for client in self._clients.values():
-            if client.name not in exclude_names:
-                client.send(_Event.serialise(event)) #check to see if this is ok? maybe _Event.serialise?
+            client.send(_Event.serialise(event)) #check to see if this is ok? maybe _Event.serialise?
                 
 
 @dataclass(kw_only=True)
@@ -186,6 +215,7 @@ class ChannelClientHandler:
     name: str = field(init=False)
     
     muted: bool = False
+    joined: bool = False
 
     def __post_init__(self) -> None:
         #get name from client
@@ -195,34 +225,15 @@ class ChannelClientHandler:
         if self.name in channel_client_names:
             # reject! (not sure how to reject because you need to take it out. not let it join the waitlist or clients)
             ...
-    
-    def start(self) -> None:
-        # TODO: spin up a running our handler
+            
         receive_thread = Thread(target=self.receive_handler, daemon=True)
         receive_thread.start()
-        
-        self.send(_Event.serialise(JoinEvent()))
+    
+    def join(self) -> None:
+        # TODO: spin up a running our handler
+        self.joined = True
+        self.send(_Event.serialise(JoinEvent(channel=self.channel.config.name)))
 
-    # def _handler(self) -> None:
-    #     # handles receiving messages/comments from client (should this handle ALL non join or non serverside events (aka. quit))
-    #     while True:
-    #         event = _Event.deserialise(self.socket.recv(8000))
-    #          # is this correct?
-            
-    #         match event:
-    #             case MessageEvent():
-    #                 ...
-    #             case QuitEvent():
-    #                 ...
-    #             case SendEvent():
-    #                 ...
-    #             case WhisperEvent():
-    #                 ...
-    #             case ListEvent():
-    #                 ...
-    #             case SwitchEvent():
-    #                 ...
-    #             #can deal with the right format in the client 
         
     # method to send message to user
     def message(self,message: str):
@@ -250,9 +261,10 @@ class ChannelClientHandler:
         
         match event:
                 case MessageEvent(name=n, message=m):
-                    assert self.name == n
-                    print(f"[{n}] {m}")
-                    self.channel.broadcast(event, exclude_names={event.name})
+                    if self.joined and not self.muted:
+                        assert self.name == n
+                        print(f"[{n}] {m}", flush=True)
+                        self.channel.broadcast(event)
                 case QuitEvent():
                     ...
                 case SendEvent():
@@ -265,9 +277,13 @@ class ChannelClientHandler:
                     ...
 
 
-
+check_args()
 #start the server here?
-channel_configs = load_channel_configs(sys.argv[2])
+if len(sys.argv) == 3:
+    channel_configs = load_channel_configs(sys.argv[2])
+else:
+    channel_configs = load_channel_configs(sys.argv[1])
+
 
 server = ChatServer(channel_configs=channel_configs)
 server.start()
