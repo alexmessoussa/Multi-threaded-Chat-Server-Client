@@ -10,7 +10,11 @@ from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,Kic
 from socket import AF_INET, SOCK_STREAM, socket
 
 def print_usage_and_exit():
-    print("Usage: chatclient port_number client_username", file=sys.stderr)
+    print("Usage: chatclient port_number client_username", file=sys.stderr, flush=True)
+    sys.exit(3)
+    
+def port_exit():
+    print(f"Error: Unable to connect to port {argv[1]}.", file=sys.stderr, flush=True)
     sys.exit(3)
 
 def check_args():
@@ -20,9 +24,9 @@ def check_args():
     try:
         port_number = int(sys.argv[1])
         if not (1024 <= port_number <= 65535):
-            print_usage_and_exit()
+            port_exit()
     except ValueError:
-        print_usage_and_exit()
+        port_exit()
 
     client_username = sys.argv[2]
     if not client_username:
@@ -37,9 +41,12 @@ class ChatClient:
     def __post_init__(self):
         port = int(argv[1])
         self.socket = socket(AF_INET, SOCK_STREAM)
-        self.socket.connect(('localhost', port))
-        self.socket.send(self.name.encode())
-        
+        try:
+            self.socket.connect(('localhost', port))
+            self.socket.send(self.name.encode())
+        except:
+            port_exit()  
+        print(f"Welcome to chatclient, {self.name}.")  
         receive_thread = Thread(target=self.receive_handler, daemon=True)
         receive_thread.start()
 
@@ -73,14 +80,14 @@ class ChatClient:
         
         match event:
             case MessageEvent(name = n, message = m):
-                print(f"[{n}] {m}")
+                print(f"[{n}] {m}", flush=True)
             case ShutdownEvent():
-                print("shutting down client")
-                print("Error: server connection closed.", file=sys.stderr)
+                print("shutting down client", flush=True)
+                print("Error: server connection closed.", file=sys.stderr, flush=True)
                 self.socket.close()
                 exit(8)
-            case JoinEvent():
-                print(f'[Server Message] You have joined the channel.')
+            case JoinEvent(channel=c):
+                print(f'[Server Message] You have joined the channel "{c}".', flush=True)
     
 
 check_args()    
