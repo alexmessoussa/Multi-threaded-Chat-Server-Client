@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class EventType(IntEnum):
-    QUIT = 41
+    QUIT = auto()
     KICK = auto()
     SHUTDOWN = auto()
     MUTE = auto()
@@ -20,6 +20,7 @@ class EventType(IntEnum):
     LIST = auto()
     SWITCH = auto()
     MESSAGE = auto()
+    JOIN = auto()
 
 
 @dataclass(kw_only=True)
@@ -130,12 +131,12 @@ class KickEvent(_Event):
 class ShutdownEvent(_Event):
     type: ClassVar[Literal[EventType.SHUTDOWN]] = EventType.SHUTDOWN
 
-    def _serialise(self) -> bytes:
-        raise RuntimeError("shutdown not serialisable")
+    def _serialise(self):
+        return b''
     
     @classmethod
-    def _deserialise(cls, data):
-        raise RuntimeError("shutdown not deserialisable")
+    def _deserialise(cls, data) -> ShutdownEvent:
+        return ShutdownEvent()
 
 
 @dataclass(kw_only=True)
@@ -161,7 +162,6 @@ class EmptyEvent(_Event):
     @classmethod
     def _deserialise(cls, data):
         raise RuntimeError("empty not deserialisable")
-
 
 @dataclass(kw_only=True)
 class SendEvent(_Event):
@@ -197,6 +197,7 @@ class WhisperEvent(_Event):
             len(self.message),
             self.message.encode(),
         )
+    
     
     @classmethod
     def _deserialise(cls, data) -> WhisperEvent:
@@ -280,6 +281,18 @@ class SwitchEvent(_Event):
             name=name,
             channel=channel,
         )
+        
+        
+@dataclass(kw_only=True)
+class JoinEvent(_Event):
+    type: ClassVar[Literal[EventType.JOIN]] = EventType.JOIN
+
+    def _serialise(self):
+        return b''
+
+    @classmethod
+    def _deserialise(cls, data) -> JoinEvent:
+        return JoinEvent()
 
 
 Event = (
@@ -293,4 +306,5 @@ Event = (
     | WhisperEvent
     | ListEvent
     | SwitchEvent
+    | JoinEvent
 )
