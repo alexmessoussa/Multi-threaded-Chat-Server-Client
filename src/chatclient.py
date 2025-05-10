@@ -5,49 +5,68 @@ from sys import argv
 from threading import Thread
 from re import match
 import sys
-from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,Event
+import struct
+from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,JoinEvent,Event
 from socket import AF_INET, SOCK_STREAM, socket
 
+def print_usage_and_exit():
+    print("Usage: chatclient port_number client_username", file=sys.stderr)
+    sys.exit(3)
 
+def check_args():
+    if len(sys.argv) != 3:
+        print_usage_and_exit()
+
+    try:
+        port_number = int(sys.argv[1])
+        if not (1024 <= port_number <= 65535):
+            print_usage_and_exit()
+    except ValueError:
+        print_usage_and_exit()
+
+    client_username = sys.argv[2]
+    if not client_username:
+        print_usage_and_exit()
 
 
 @dataclass
 class ChatClient:
     socket: socket = field(init=False)
-    name: str = argv[2]
+    name: str
     
     def __post_init__(self):
         port = int(argv[1])
         self.socket = socket(AF_INET, SOCK_STREAM)
         self.socket.connect(('localhost', port))
-        
         self.socket.send(self.name.encode())
         
         receive_thread = Thread(target=self.receive_handler, daemon=True)
-        
         receive_thread.start()
+
     
     def interact(self):
         while True:
             message = input().strip()
             event = MessageEvent(name=self.name, message=message)
             self.send(event)
-            
+                
     def send(self,event:Event):
         message = _Event.serialise(event)
-        self.socket.send(message + b'\n')            
+        length = len(message)
+        self.socket.send(struct.pack(f"!I", length) + message)
+                 
             #probably a match check to see what stuff it wants to send. ie. a message or a command and send that to a method that makes an Event and sends it?
     
     def receive_handler(self):
-        buffer = b''
         while True:
-            data = self.socket.recv(1024)
-            if not data:
+                # get the first 4 bytes determining message length L
+                # get L bytes and process via `self.receive`
+            message_length_b = self.socket.recv(4)
+            if not message_length_b:
                 break
-            buffer += data
-            while b'\n' in buffer:
-                message, buffer = buffer.split(b'\n', 1)
-                self.receive(message)
+            message_length: int = struct.unpack("!I",message_length_b)[0]
+            message = self.socket.recv(message_length)
+            self.receive(message)
     
     def receive(self, message:bytes):
         event = _Event.deserialise(message)
@@ -55,8 +74,16 @@ class ChatClient:
         match event:
             case MessageEvent(name = n, message = m):
                 print(f"[{n}] {m}")
+            case ShutdownEvent():
+                print("shutting down client")
+                print("Error: server connection closed.", file=sys.stderr)
+                self.socket.close()
+                exit(8)
+            case JoinEvent():
+                print(f'[Server Message] You have joined the channel.')
     
-    
-    
-client = ChatClient()
+
+check_args()    
+
+client = ChatClient(name=sys.argv[2])
 client.interact()
