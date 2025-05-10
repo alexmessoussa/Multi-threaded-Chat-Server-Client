@@ -286,13 +286,26 @@ class SwitchEvent(_Event):
 @dataclass(kw_only=True)
 class JoinEvent(_Event):
     type: ClassVar[Literal[EventType.JOIN]] = EventType.JOIN
+    channel: str
 
     def _serialise(self):
-        return b''
-
+        return struct.pack(
+            f"!I{len(self.channel)}s",
+            len(self.channel),
+            self.channel.encode()
+        )
+    
     @classmethod
     def _deserialise(cls, data) -> JoinEvent:
-        return JoinEvent()
+        channel_length = struct.unpack("!I", data[:4])[0]
+        channel = struct.unpack(
+            f"{channel_length}s",
+            data[4 : 4 + channel_length],
+        )[0].decode()
+
+        return JoinEvent(
+            channel=channel
+        )
 
 
 Event = (
