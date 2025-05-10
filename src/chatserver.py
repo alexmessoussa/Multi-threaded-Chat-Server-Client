@@ -11,7 +11,7 @@ from enum import IntEnum, auto
 from typing import Literal, ClassVar, Type
 from abc import ABC, abstractmethod
 import struct
-from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,Event
+from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,JoinEvent,Event
 from collections.abc import Sequence
 
 
@@ -72,20 +72,21 @@ class ChatServer:
         while True:
             command = input().split()
             #would this be how to wait for commands for server? should i send events to channels and if so, how do i prioritise them perhaps
-            
-            match command[0]: #this but the first word only. trying to do it 
-                case "/shutdown":
-                    print("shutting down...")
-                    self.shutdown()
-                    print("shutdown channels...")
-                    sys.exit() # shutdown server
-                case "/kick":
-                    ...
-                case "/mute":
-                    ...
-                case "/empty":
-                    ...
-                    
+            try:
+                match command[0]: #this but the first word only. trying to do it 
+                    case "/shutdown":
+                        print("shutting down...")
+                        self.shutdown()
+                        print("shutdown channels...")
+                        #sys.exit() # shutdown server
+                    case "/kick":
+                        ...
+                    case "/mute":
+                        ...
+                    case "/empty":
+                        ...
+            except:
+                continue
                     
     def shutdown(self):
         for channel in self._channels:
@@ -160,6 +161,7 @@ class ChannelServer:
 
     def _join(self, client: ChannelClientHandler) -> None:
         self._clients[client.name] = client
+        print(f'[Server Message] {client.name} has joined the channel "{self.config.name}"')      
         client.start()
         # notify user/server
 
@@ -168,15 +170,13 @@ class ChannelServer:
         # print any notices that the user has left
         self._clients.pop(name)
         
-    def broadcast(self, event: MessageEvent) -> None:
+    def broadcast(self, event: Event, exclude_names: set[str] | None = None) -> None:
+        if exclude_names is None:
+            exclude_names = set()
         for client in self._clients.values():
-            if client.name != event.name:
+            if client.name not in exclude_names:
                 client.send(_Event.serialise(event)) #check to see if this is ok? maybe _Event.serialise?
-
-    def shutdown(self) -> None:
-        for client in self._clients.values():
-            client.send(_Event.serialise(ShutdownEvent()))
-
+                
 
 @dataclass(kw_only=True)
 class ChannelClientHandler:
@@ -200,6 +200,8 @@ class ChannelClientHandler:
         # TODO: spin up a running our handler
         receive_thread = Thread(target=self.receive_handler, daemon=True)
         receive_thread.start()
+        
+        self.send(_Event.serialise(JoinEvent()))
 
     # def _handler(self) -> None:
     #     # handles receiving messages/comments from client (should this handle ALL non join or non serverside events (aka. quit))
@@ -228,29 +230,29 @@ class ChannelClientHandler:
         self.socket.send(message_event._serialise())        
             
     def send(self,message:bytes):
-        self.socket.send(message)
-        self.socket.send(b'\n')
+        length = len(message)
+        self.socket.send(struct.pack(f"!I", length) + message)
             
             #probably a match check to see what stuff it wants to send. ie. a message or a command and send that to a method that makes an Event and sends it?
     
     def receive_handler(self):
-        buffer = b''
         while True:
-            data = self.socket.recv(1024)
-            if not data:
+            message_length_b = self.socket.recv(4)
+            if not message_length_b:
                 break
-            buffer += data
-            while b'\n' in buffer:
-                message, buffer = buffer.split(b'\n', 1)
-                self.receive(message)
+            message_length: int = struct.unpack("!I",message_length_b)[0]
+            message = self.socket.recv(message_length)
+            self.receive(message)
                 
     
     def receive(self, message:bytes):
         event = _Event.deserialise(message)
         
         match event:
-                case MessageEvent():
-                    self.channel.broadcast(event)
+                case MessageEvent(name=n, message=m):
+                    assert self.name == n
+                    print(f"[{n}] {m}")
+                    self.channel.broadcast(event, exclude_names={event.name})
                 case QuitEvent():
                     ...
                 case SendEvent():
