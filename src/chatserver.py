@@ -177,11 +177,12 @@ class ChannelServer:
                     ...
                 case QuitEvent(name=name): #im confused will this even reach queue? should this not be handled in ChannelClientHandler's _handler method?
                     # remove client from _clients
-                    self._quit(name)
-                    if self._waitlist:
-                        self._join(self._waitlist.pop(0))
-                        for idx, client in enumerate(self._waitlist):
-                            client.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+                    # self._quit(name)
+                    # if self._waitlist:
+                    #     self._join(self._waitlist.pop(0))
+                    #     for idx, client in enumerate(self._waitlist):
+                    #         client.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+                    ...
 
     def _join(self, client: ChannelClientHandler) -> None:
         self._clients[client.name] = client
@@ -252,8 +253,22 @@ class ChannelClientHandler:
                         assert self.name == n
                         print(f"[{n}] {m}", flush=True)
                         self.channel.broadcast(event)
-                case QuitEvent():
-                    ...
+                case QuitEvent(name=name):
+                    self.channel._quit(name)
+                    self.send(_Event.serialise(QuitEvent(name=name)))
+                    self.joined = False
+                    print(f"[Server Message] {name} has left the channel.", flush=True)
+                    for client in self.channel._clients:
+                        if client != name and client not in self.channel._waitlist:
+                            client_handler = self.channel._clients.get(client)
+                            if client_handler != None:
+                                client_handler.send(_Event.serialise(MessageEvent(name="Server Message",message=f"{name} has left the channel.")))
+                        else:
+                            pass
+                    if self.channel._waitlist != None:
+                        self.channel._join(self.channel._waitlist.pop(0))
+                        for idx, c in enumerate(self.channel._waitlist):
+                            c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
                 case SendEvent():
                     ...
                 case WhisperEvent(name=sender, target=receiver, message=msg):
