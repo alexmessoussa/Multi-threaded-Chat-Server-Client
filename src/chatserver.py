@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+import os
 from re import match
 from queue import Queue
 from socket import *
@@ -32,21 +33,31 @@ def check_args():
 
 def load_channel_configs(filename: str) -> list[ChannelConfig]:
         configs = []
-        with open(filename, 'r') as file:
-            for line in file:
-                parts = line.strip().split()
-                try:
-                    _, name, port_str, capacity_str = parts
-                    config = ChannelConfig(
-                        name=name,
-                        port=int(port_str),
-                        capacity=int(capacity_str)
-                    )
-                    configs.append(config)
-                except (ValueError, AssertionError):
-                    print(f"Error: Invalid configuration file.", file=sys.stderr, flush=True)
-                    sys.exit(5)
-                    
+        try:
+            with open(filename, 'r') as file:
+                for line in file:
+                    parts = line.strip().split()
+                    try:
+                        channel, name, port_str, capacity_str = parts
+                        if channel != "channel":
+                            print("Error: Invalid configuration file.", file=sys.stderr, flush=True)
+                            sys.exit(5)
+                        config = ChannelConfig(
+                            name=name,
+                            port=int(port_str),
+                            capacity=int(capacity_str)
+                        )
+                        configs.append(config)
+                    except (ValueError, AssertionError):
+                        print(f"Error: Invalid configuration file.", file=sys.stderr, flush=True)
+                        sys.exit(5)
+        except FileNotFoundError:
+            print_usage_and_exit()
+        except:
+            sys.exit(5)
+        if len(configs) == 0:
+            print("Error: Invalid configuration file.", file=sys.stderr, flush=True)
+            sys.exit(5)
         return configs
     
     
@@ -108,7 +119,7 @@ class ChatServer:
             channel.shutdown()
             channel._events.put(ShutdownEvent())
         self.running = False
-        
+
 
 @dataclass(kw_only=True)
 class ChannelServer:
@@ -136,7 +147,6 @@ class ChannelServer:
         except:
             print(f"Error: unable to listen on port {self.config.port}.", file=sys.stderr, flush=True)
             sys.exit(6)
-            
         print(f'Channel "{self.config.name}" is created on port {self.config.port}, with a capacity of {self.config.capacity}.', flush=True)
         
         self._listen_thread = threading.Thread(target=self._listen)
@@ -151,15 +161,13 @@ class ChannelServer:
             except:
                 continue
             client_handler = ChannelClientHandler(socket=client_sock, channel=self)
-            if len(self._clients) >= self.config.capacity:
-                client_handler.send(_Event.serialise(MessageEvent(name="Server Message", message=f"You are in the waiting queue and there are {len(self._waitlist)} user(s) ahead of you.")))
-                self._waitlist.append(client_handler)
-            else:
-                self._join(client_handler)
+            if client_handler.name not in self.client_names:
+                if len(self._clients) >= self.config.capacity:
+                    client_handler.send(_Event.serialise(MessageEvent(name="Server Message", message=f"You are in the waiting queue and there are {len(self._waitlist)} user(s) ahead of you.")))
+                    self._waitlist.append(client_handler)
+                else:
+                    self._join(client_handler)
 
-    # this will be a main (non-daemon) thread (there will be one per channel)
-    # -> below while True should check `self.running`;
-    #    set to `False` in a `shutdown()` method, after broadcasting it to clients
     def _handler(self) -> None:
         while self.running:
             try:
@@ -174,14 +182,6 @@ class ChannelServer:
                 case MuteEvent():
                     ...
                 case EmptyEvent():
-                    ...
-                case QuitEvent(name=name): #im confused will this even reach queue? should this not be handled in ChannelClientHandler's _handler method?
-                    # remove client from _clients
-                    # self._quit(name)
-                    # if self._waitlist:
-                    #     self._join(self._waitlist.pop(0))
-                    #     for idx, client in enumerate(self._waitlist):
-                    #         client.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
                     ...
 
     def _join(self, client: ChannelClientHandler) -> None:
@@ -214,15 +214,18 @@ class ChannelClientHandler:
     name: str = field(init=False)
     muted: bool = False
     joined: bool = False
+    running: bool = True
 
     def __post_init__(self) -> None:
         self.name = self.socket.recv(1024).decode()
         channel_client_names = self.channel.client_names
         if self.name in channel_client_names:
-            # reject!
-            return
-        receive_thread = Thread(target=self.receive_handler)
-        receive_thread.start()
+            self.socket.send(self.channel.config.name.encode())
+            self.running = False
+        else:
+            self.socket.send(b"Y")
+            receive_thread = Thread(target=self.receive_handler)
+            receive_thread.start()
     
     def join(self) -> None:
         self.joined = True
@@ -237,7 +240,7 @@ class ChannelClientHandler:
         self.socket.send(struct.pack(f"!I", length) + message)
                 
     def receive_handler(self):
-        while True:
+        while self.running:
             message_length_b = self.socket.recv(4)
             if not message_length_b:
                 break

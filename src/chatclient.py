@@ -19,7 +19,7 @@ def port_exit():
     sys.exit(7)
 
 def check_args():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 3 or " " in argv[2]:
         print_usage_and_exit()
     try:
         port_number = int(sys.argv[1])
@@ -49,6 +49,10 @@ class ChatClient:
         except:
             port_exit()  
         self.socket.settimeout(1)
+        allowed = self.socket.recv(1024).decode()
+        if allowed != "Y":
+            print(f'[Server Message] Channel "{allowed}" already has user {sys.argv[2]}.', flush=True)
+            sys.exit(2)
         print(f"Welcome to chatclient, {self.name}.")  
         self._receive_thread = Thread(target=self.receive_handler)
         self._interact_thread = Thread(target=self.interact)
@@ -80,8 +84,8 @@ class ChatClient:
                             ...
                         case "/whisper":
                             parts = message.split(maxsplit=2)
-                            if len(parts) < 3:
-                                print("[Server Message] Usage: /whisper receiver_client_username chat_message")
+                            if len(parts) < 3 or message != message.strip():
+                                print("[Server Message] Usage: /whisper receiver_client_username chat_message", flush=True)
                             else:
                                 _, target, msg = parts
                                 event = WhisperEvent(name=self.name, target=target, message=msg)
@@ -139,7 +143,7 @@ class ChatClient:
             self._interact_thread.join()
 
         sys.exit(0)
-    
+ 
 
 check_args()    
 
