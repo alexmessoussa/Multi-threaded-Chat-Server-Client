@@ -86,19 +86,26 @@ class ChatServer:
                 ChannelServer(config=c, server=self),
             )
         print("Welcome to chatserver.", flush=True)
+        start_thread = Thread(target=self.start, daemon=True)
+        start_thread.start()
     
     
     def start(self):    
         while True:
-            command = input().split()
+            message = input()
+            command = message.split()
             #would this be how to wait for commands for server? should i send events to channels and if so, how do i prioritise them perhaps
             try:
                 match command[0]: #this but the first word only. trying to do it 
                     case "/shutdown":
-                        print("shutting down...", flush=True)
-                        self.shutdown()
-                        print("shutdown channels...", flush=True)
-                        sys.exit() # shutdown server
+                        if message != message.strip():
+                            print("Usage: /shutdown")
+                        elif len(command) == 1:
+                            self.shutdown()
+                            print("[Server Message] Server shuts down.", flush=True)
+                            sys.exit(0) # shutdown server
+                        else:
+                            print("Usage: /shutdown")
                     case "/kick":
                         ...
                     case "/mute":
@@ -110,7 +117,9 @@ class ChatServer:
                     
     def shutdown(self):
         for channel in self._channels:
-            channel.broadcast(ShutdownEvent())
+            channel.shutdown()
+            channel._events.put(ShutdownEvent())
+            
         #should also send a shutdown event to the client (who cannot send one back) to trigger a client shutdown
             
             
@@ -131,6 +140,8 @@ class ChannelServer:
     # need to store metadata on the event, e.g., the socket
     _events: Queue[Event] = field(default_factory=Queue, init=False)
     
+    running: bool = True
+    
     @property
     def client_names(self) -> Sequence[str]:
         return (*self._clients.keys(), *(c.name for c in self._waitlist))
@@ -147,7 +158,7 @@ class ChannelServer:
         print(f'Channel "{self.config.name}" is created on port {self.config.port}, with a capacity of {self.config.capacity}.', flush=True)
         
         listen = threading.Thread(target=self._listen, daemon=True)
-        handle = threading.Thread(target=self._handler, daemon=True)
+        handle = threading.Thread(target=self._handler)
         listen.start()
         handle.start()
 
@@ -174,13 +185,13 @@ class ChannelServer:
         # iterates events
         # if join: if capacity, add client via `_join`; else queue on `_waitlist` and notify
         # if leave: remove client from `_clients`; permit from `_waitlist`
-        while True:
+        while self.running:
             event = self._events.get()
             match event:
                 case KickEvent():
                     ...
                 case ShutdownEvent():
-                    ...
+                    sys.exit(0)
                 case MuteEvent():
                     ...
                 case EmptyEvent():
@@ -208,6 +219,14 @@ class ChannelServer:
     def broadcast(self, event: Event) -> None:
         for client in self._clients.values():
             client.send(_Event.serialise(event)) #check to see if this is ok? maybe _Event.serialise?
+    
+    def all_broadcast(self, event: Event) -> None:
+        for all in list(self._clients.values()) + self._waitlist:
+            all.send(_Event.serialise(event))
+    
+    def shutdown(self):
+        self.running = False
+        self.all_broadcast(ShutdownEvent())
                 
 
 @dataclass(kw_only=True)
@@ -289,4 +308,3 @@ else:
 
 
 server = ChatServer(channel_configs=channel_configs)
-server.start()
