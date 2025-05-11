@@ -265,7 +265,7 @@ class ChannelClientHandler:
                                 client_handler.send(_Event.serialise(MessageEvent(name="Server Message",message=f"{name} has left the channel.")))
                         else:
                             pass
-                    if self.channel._waitlist != None:
+                    if len(self.channel._waitlist):
                         self.channel._join(self.channel._waitlist.pop(0))
                         for idx, c in enumerate(self.channel._waitlist):
                             c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))

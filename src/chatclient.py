@@ -5,8 +5,10 @@ from threading import Thread
 from re import match
 import sys
 import struct
+import threading
 from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,JoinEvent,Event
 from socket import AF_INET, SOCK_STREAM, socket
+import select
 
 def print_usage_and_exit():
     print("Usage: chatclient port_number client_username", file=sys.stderr, flush=True)
@@ -34,6 +36,9 @@ def check_args():
 class ChatClient:
     socket: socket = field(init=False)
     name: str
+    _receive_thread: Thread = field(init=False)
+    _interact_thread: Thread = field(init=False)
+    running: bool = True
     
     def __post_init__(self):
         port = int(argv[1])
@@ -43,39 +48,51 @@ class ChatClient:
             self.socket.send(self.name.encode())
         except:
             port_exit()  
+        self.socket.settimeout(1)
         print(f"Welcome to chatclient, {self.name}.")  
-        receive_thread = Thread(target=self.receive_handler)
-        interact_thread = Thread(target=self.interact, daemon=True)
-        receive_thread.start()
-        interact_thread.start()
+        self._receive_thread = Thread(target=self.receive_handler)
+        self._interact_thread = Thread(target=self.interact)
+        self._receive_thread.start()
+        self._interact_thread.start()
 
     def interact(self):
-        while True:
-            message = input().strip()
-            try:
-                match message.split()[0]:
-                    case "/send":
-                        ...
-                    case "/quit":
-                        event = QuitEvent(name=self.name)
-                        self.send(event)
-                    case "/list":
-                        ...
-                    case "/whisper":
-                        parts = message.split(maxsplit=2)
-                        if len(parts) < 3:
-                            print("[Server Message] Usage: /whisper receiver_client_username chat_message")
-                        else:
-                            _, target, msg = parts
-                            event = WhisperEvent(name=self.name, target=target, message=msg)
+        while self.running:
+            ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+            if ready:
+                message = sys.stdin.readline().strip('\n')
+                if not message:
+                    continue
+                if not message.startswith("/"):
+                    event = MessageEvent(name=self.name, message=message)
+                    self.send(event)
+                    continue
+                try:
+                    match message.split()[0]:
+                        case "/send":
+                            ...
+                        case "/quit":
+                            if len(message.split()) != 1 or message != message.strip():
+                                print("[Server Message] Usage: /quit", flush=True)
+                            else:
+                                event = QuitEvent(name=self.name)
+                                self.send(event)
+                        case "/list":
+                            ...
+                        case "/whisper":
+                            parts = message.split(maxsplit=2)
+                            if len(parts) < 3:
+                                print("[Server Message] Usage: /whisper receiver_client_username chat_message")
+                            else:
+                                _, target, msg = parts
+                                event = WhisperEvent(name=self.name, target=target, message=msg)
+                                self.send(event)
+                        case "/switch":
+                            ...
+                        case _:
+                            event = MessageEvent(name=self.name, message=message)
                             self.send(event)
-                    case "/switch":
-                        ...
-                    case _:
-                        event = MessageEvent(name=self.name, message=message)
-                        self.send(event)
-            except:
-                pass
+                except:
+                    pass
                 
     def send(self,event:Event):
         message = _Event.serialise(event)
@@ -83,8 +100,11 @@ class ChatClient:
         self.socket.send(struct.pack(f"!I", length) + message)
                      
     def receive_handler(self):
-        while True:
-            message_length_b = self.socket.recv(4)
+        while self.running:
+            try:
+                message_length_b = self.socket.recv(4)
+            except:
+                continue
             if not message_length_b:
                 break
             message_length = struct.unpack("!I",message_length_b)[0]
@@ -99,14 +119,26 @@ class ChatClient:
                 print(f"[{n}] {m}", flush=True)
             case ShutdownEvent():
                 print("Error: server connection closed.", file=sys.stderr, flush=True)
-                self.socket.close()
-                sys.exit(8)
+                self.shutdown()
                 print("\n", file=sys.stdin, flush=True)
             case JoinEvent(channel=c):
                 print(f'[Server Message] You have joined the channel "{c}".', flush=True)
             case QuitEvent(name=name):
                 self.socket.close()
-                sys.exit(0)
+                self.shutdown()
+    
+    def shutdown(self):
+        self.running = False
+        self.socket.close()
+
+        current = threading.current_thread()
+
+        if self._receive_thread is not current:
+            self._receive_thread.join()
+        if self._interact_thread is not current:
+            self._interact_thread.join()
+
+        sys.exit(0)
     
 
 check_args()    
