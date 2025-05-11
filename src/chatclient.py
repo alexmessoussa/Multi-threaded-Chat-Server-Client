@@ -61,11 +61,13 @@ class ChatClient:
                     case "/list":
                         ...
                     case "/whisper":
-                        if len(message.split()) != 3:
-                            ...
+                        parts = message.split(maxsplit=2)
+                        if len(parts) < 3:
+                            print("[Server Message] Usage: /whisper receiver_client_username chat_message")
                         else:
-                            # event = WhisperEvent(target=message.split()[2])
-                            ...
+                            _, target, msg = parts
+                            event = WhisperEvent(name=self.name, target=target, message=msg)
+                            self.send(event)
                     case "/switch":
                         ...
                     case _:

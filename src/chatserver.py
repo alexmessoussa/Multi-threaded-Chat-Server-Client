@@ -256,8 +256,15 @@ class ChannelClientHandler:
                     ...
                 case SendEvent():
                     ...
-                case WhisperEvent():
-                    ...
+                case WhisperEvent(name=sender, target=receiver, message=msg):
+                    r = self.channel._clients.get(receiver)
+                    if r != None:
+                        self.channel._events.put(event)
+                        self.send(_Event.serialise(MessageEvent(name=f"{self.name} whispers to {receiver}", message=msg)))
+                        r.send(_Event.serialise(MessageEvent(name=f"{sender} whispers to you", message=msg)))
+                        print(f"[{sender} whispers to {receiver}] {msg}", flush=True)
+                    else:
+                        self.send(_Event.serialise(MessageEvent(name="Server Message", message=f"{receiver} is not in the channel.")))
                 case ListEvent():
                     ...
                 case SwitchEvent():
