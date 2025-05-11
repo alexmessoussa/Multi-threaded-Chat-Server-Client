@@ -57,7 +57,8 @@ class ChatClient:
                     case "/send":
                         ...
                     case "/quit":
-                        ...
+                        event = QuitEvent(name=self.name)
+                        self.send(event)
                     case "/list":
                         ...
                     case "/whisper":
@@ -103,6 +104,9 @@ class ChatClient:
                 print("\n", file=sys.stdin, flush=True)
             case JoinEvent(channel=c):
                 print(f'[Server Message] You have joined the channel "{c}".', flush=True)
+            case QuitEvent(name=name):
+                self.socket.close()
+                sys.exit(0)
     
 
 check_args()    
