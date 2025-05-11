@@ -284,7 +284,8 @@ class ChannelClientHandler:
                     else:
                         self.send(_Event.serialise(MessageEvent(name="Server Message", message=f"{receiver} is not in the channel.")))
                 case ListEvent():
-                    ...
+                    for channel in self.channel.server._channels:
+                        self.send(_Event.serialise(MessageEvent(name="Channel", message=f"{channel.config.name} {channel.config.port} Capacity: {len(channel._clients)}/{channel.config.capacity}, Queue: {len(channel._waitlist)}")))
                 case SwitchEvent():
                     ...
 

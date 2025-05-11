@@ -81,7 +81,11 @@ class ChatClient:
                                 event = QuitEvent(name=self.name)
                                 self.send(event)
                         case "/list":
-                            ...
+                            if len(message.split()) != 1 or message != message.strip():
+                                print("[Server Message] Usage: /list", flush=True)
+                            else:
+                                event = ListEvent(name=self.name)
+                                self.send(event)
                         case "/whisper":
                             parts = message.split(maxsplit=2)
                             if len(parts) < 3 or message != message.strip():
