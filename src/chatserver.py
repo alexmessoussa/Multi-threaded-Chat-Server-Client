@@ -98,7 +98,7 @@ class ChatServer:
                         print("shutting down...", flush=True)
                         self.shutdown()
                         print("shutdown channels...", flush=True)
-                        #sys.exit() # shutdown server
+                        sys.exit() # shutdown server
                     case "/kick":
                         ...
                     case "/mute":
@@ -166,6 +166,9 @@ class ChannelServer:
             else:
                 self._join(client_handler)
 
+    # this will be a main (non-daemon) thread (there will be one per channel)
+    # -> below while True should check `self.running`;
+    #    set to `False` in a `shutdown()` method, after broadcasting it to clients
     def _handler(self) -> None:
         # runs in a thread, processing from `_events`
         # iterates events

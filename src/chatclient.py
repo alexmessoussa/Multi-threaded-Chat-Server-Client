@@ -15,7 +15,7 @@ def print_usage_and_exit():
     
 def port_exit():
     print(f"Error: Unable to connect to port {argv[1]}.", file=sys.stderr, flush=True)
-    sys.exit(3)
+    sys.exit(7)
 
 def check_args():
     if len(sys.argv) != 3:
@@ -47,15 +47,36 @@ class ChatClient:
         except:
             port_exit()  
         print(f"Welcome to chatclient, {self.name}.")  
-        receive_thread = Thread(target=self.receive_handler, daemon=True)
+        receive_thread = Thread(target=self.receive_handler)
+        interact_thread = Thread(target=self.interact, daemon=True)
         receive_thread.start()
+        interact_thread.start()
 
     
     def interact(self):
         while True:
             message = input().strip()
-            event = MessageEvent(name=self.name, message=message)
-            self.send(event)
+            try:
+                match message.split()[0]:
+                    case "/send":
+                        ...
+                    case "/quit":
+                        ...
+                    case "/list":
+                        ...
+                    case "/whisper":
+                        if len(message.split()) != 3:
+                            ...
+                        else:
+                            # event = WhisperEvent(target=message.split()[2])
+                            ...
+                    case "/switch":
+                        ...
+                    case _:
+                        event = MessageEvent(name=self.name, message=message)
+                        self.send(event)
+            except:
+                pass
                 
     def send(self,event:Event):
         message = _Event.serialise(event)
@@ -82,10 +103,10 @@ class ChatClient:
             case MessageEvent(name = n, message = m):
                 print(f"[{n}] {m}", flush=True)
             case ShutdownEvent():
-                print("shutting down client", flush=True)
                 print("Error: server connection closed.", file=sys.stderr, flush=True)
                 self.socket.close()
-                exit(8)
+                sys.exit(8)
+                print("\n", file=sys.stdin, flush=True)
             case JoinEvent(channel=c):
                 print(f'[Server Message] You have joined the channel "{c}".', flush=True)
     
@@ -93,4 +114,5 @@ class ChatClient:
 check_args()    
 
 client = ChatClient(name=sys.argv[2])
-client.interact()
+#client.interact()
+
