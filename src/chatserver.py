@@ -289,8 +289,16 @@ class ChannelClientHandler:
         while self.running:
             try:
                 message_length_b = self.socket.recv(4)
+                if not message_length_b:
+                    break
+                message_length = struct.unpack("!I",message_length_b)[0]
+                message = self.socket.recv(message_length)
             except TimeoutError:
                 continue
+            except (ConnectionResetError, BrokenPipeError):
+                break
+            except:
+                break
             # if message_length_b == b'':
             #     self.running = False
             #     self.channel._quit(self.name)
@@ -310,9 +318,22 @@ class ChannelClientHandler:
             #else:   
             if not message_length_b:
                 break
-            message_length = struct.unpack("!I",message_length_b)[0]
-            message = self.socket.recv(message_length)
             self.receive(message)
+            
+        self.running = False
+        if self.joined:
+            self.channel._quit(self.name)
+            self.joined = False
+            print(f"[Server Message] {self.name} has left the channel.", flush=True)
+            for client in self.channel._clients:
+                if client != self.name and client not in self.channel._waitlist:
+                    client_handler = self.channel._clients.get(client)
+                    if client_handler:
+                        client_handler.send(_Event.serialise(MessageEvent(name="Server Message", message=f"{self.name} has left the channel.")))
+            if len(self.channel._waitlist):
+                self.channel._join(self.channel._waitlist.pop(0))
+                for idx, c in enumerate(self.channel._waitlist):
+                    c.send(_Event.serialise(MessageEvent(name="Server Message", message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
                 
     def receive(self, message:bytes):
         event = _Event.deserialise(message)

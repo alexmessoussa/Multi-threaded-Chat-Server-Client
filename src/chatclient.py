@@ -37,7 +37,6 @@ class ChatClient:
     socket: socket = field(init=False)
     name: str
     _receive_thread: Thread = field(init=False)
-    _interact_thread: Thread = field(init=False)
     running: bool = True
     
     def __post_init__(self):
@@ -55,9 +54,7 @@ class ChatClient:
             sys.exit(2)
         print(f"Welcome to chatclient, {self.name}.")  
         self._receive_thread = Thread(target=self.receive_handler)
-        self._interact_thread = Thread(target=self.interact)
         self._receive_thread.start()
-        self._interact_thread.start()
 
     def interact(self):
         while self.running:
@@ -118,7 +115,8 @@ class ChatClient:
             try:
                 message_length_b = self.socket.recv(4)
             except KeyboardInterrupt as e:
-                raise e
+                self.shutdown()
+                break
             except:
                 continue
             if not message_length_b:
@@ -167,17 +165,16 @@ class ChatClient:
     def shutdown(self):
         self.running = False
         self.socket.close()
-
-        current = threading.current_thread()
-
-        if self._receive_thread is not current:
+        if threading.current_thread() is not self._receive_thread:
             self._receive_thread.join()
-        if self._interact_thread is not current:
-            self._interact_thread.join()
-
         sys.exit(0)
  
 
 check_args()    
 
 client = ChatClient(name=sys.argv[2])
+try:
+    client.interact()
+except:
+    client.send(QuitEvent(name=client.name))
+    client.shutdown()
