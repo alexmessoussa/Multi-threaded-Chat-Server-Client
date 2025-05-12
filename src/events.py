@@ -120,11 +120,23 @@ class KickEvent(_Event):
     target: str
 
     def _serialise(self) -> bytes:
-        raise RuntimeError("kick not serialisable")
+        return struct.pack(
+            f"!I{len(self.target)}s",
+            len(self.target),
+            self.target.encode()
+        )
     
     @classmethod
-    def _deserialise(cls, data):
-        raise RuntimeError("kick not deserialisable")
+    def _deserialise(cls, data) -> KickEvent:
+        target_length = struct.unpack("!I", data[:4])[0]
+        target = struct.unpack(
+            f"{target_length}s",
+            data[4 : 4 + target_length],
+        )[0].decode()
+
+        return KickEvent(
+            target=target,
+        )
 
 
 @dataclass(kw_only=True)

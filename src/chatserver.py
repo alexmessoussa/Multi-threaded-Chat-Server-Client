@@ -100,17 +100,33 @@ class ChatServer:
                 match command[0]:
                     case "/shutdown":
                         if message != message.strip() or len(command) != 1:
-                            print("Usage: /shutdown")
+                            print("Usage: /shutdown", flush=True)
                         else:
                             self.shutdown()
                             print("[Server Message] Server shuts down.", flush=True)
                             break
                     case "/kick":
-                        ...
+                        if message != message.strip() or len(command) != 3:
+                            print("Usage: /kick channel_name client_username", flush=True)
+                        else:
+                            for channel in self._channels:
+                                if channel.config.name == command[1]:
+                                    channel._events.put(KickEvent(target=command[2]))
+                                    break
+                            else:
+                                print(f'[Server Message] Channel "{command[1]}" does not exist.', flush=True)                                
                     case "/mute":
                         ...
                     case "/empty":
-                        ...
+                        if message != message.strip() or len(command) != 2:
+                            print("Usage: /empty channel_name", flush=True)
+                        else:
+                            for channel in self._channels:
+                                if channel.config.name == command[1]:
+                                    channel._events.put(EmptyEvent())
+                                    break
+                            else:
+                                print(f'[Server Message] Channel "{command[1]}" does not exist.', flush=True)  
             except:
                 continue
                     
@@ -175,14 +191,43 @@ class ChannelServer:
             except:
                 continue
             match event:
-                case KickEvent():
-                    ...
+                case KickEvent(target=t):
+                    for all in list(self._clients.values()) + self._waitlist:
+                        if all.name == t:
+                            self._quit(t)
+                            all.send(_Event.serialise(KickEvent(target=t)))
+                            all.joined = False
+                            print(f"[Server Message] Kicked {t}.", flush=True)
+                            for client in self._clients:
+                                if client != t and client not in self._waitlist:
+                                    client_handler = self._clients.get(client)
+                                    if client_handler != None:
+                                        client_handler.send(_Event.serialise(MessageEvent(name="Server Message",message=f"{t} has left the channel.")))
+                                else:
+                                    pass
+                            if len(self._waitlist):
+                                self._join(self._waitlist.pop(0))
+                                for idx, c in enumerate(self._waitlist):
+                                    c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+                            break
+                    else:
+                        print(f'[Server Message] {t} is not in the channel.', flush=True)
                 case ShutdownEvent():
                     self.running = False
                 case MuteEvent():
                     ...
                 case EmptyEvent():
-                    ...
+                    print(f'[Server Message] "{self.config.name}" has been emptied.', flush=True)
+                    for c in list(self._clients.values()):
+                        self._quit(c.name)
+                        c.send(_Event.serialise(KickEvent(target=c.name)))
+                        c.joined = False        
+                        if len(self._waitlist):
+                            self._join(self._waitlist.pop(0))
+                            for idx, c in enumerate(self._waitlist):
+                                c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+
+                    
 
     def _join(self, client: ChannelClientHandler) -> None:
         self._clients[client.name] = client
@@ -219,6 +264,7 @@ class ChannelClientHandler:
     def __post_init__(self) -> None:
         self.name = self.socket.recv(1024).decode()
         channel_client_names = self.channel.client_names
+        self.socket.settimeout(1)
         if self.name in channel_client_names:
             self.socket.send(self.channel.config.name.encode())
             self.running = False
@@ -241,7 +287,27 @@ class ChannelClientHandler:
                 
     def receive_handler(self):
         while self.running:
-            message_length_b = self.socket.recv(4)
+            try:
+                message_length_b = self.socket.recv(4)
+            except TimeoutError:
+                continue
+            # if message_length_b == b'':
+            #     self.running = False
+            #     self.channel._quit(self.name)
+            #     self.joined = False
+            #     print(f"[Server Message] {self.name} has left the channel.", flush=True)
+            #     for client in self.channel._clients:
+            #         if client != self.name and client not in self.channel._waitlist:
+            #             client_handler = self.channel._clients.get(client)
+            #             if client_handler != None:
+            #                 client_handler.send(_Event.serialise(MessageEvent(name="Server Message",message=f"{self.name} has left the channel.")))
+            #         else:
+            #             pass
+            #     if len(self.channel._waitlist):
+            #         self.channel._join(self.channel._waitlist.pop(0))
+            #         for idx, c in enumerate(self.channel._waitlist):
+            #             c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+            #else:   
             if not message_length_b:
                 break
             message_length = struct.unpack("!I",message_length_b)[0]
@@ -286,8 +352,9 @@ class ChannelClientHandler:
                 case ListEvent():
                     for channel in self.channel.server._channels:
                         self.send(_Event.serialise(MessageEvent(name="Channel", message=f"{channel.config.name} {channel.config.port} Capacity: {len(channel._clients)}/{channel.config.capacity}, Queue: {len(channel._waitlist)}")))
-                case SwitchEvent():
+                case SwitchEvent(name=name, channel=channel_name):
                     ...
+                    
 
 
 check_args()

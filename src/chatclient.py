@@ -95,12 +95,18 @@ class ChatClient:
                                 event = WhisperEvent(name=self.name, target=target, message=msg)
                                 self.send(event)
                         case "/switch":
-                            ...
+                            if len(message.split()) != 2 or message != message.strip():
+                                print("[Server Message] Usage: /switch channel_name", flush=True)
+                            else:    
+                                event = SwitchEvent(name=self.name, channel=message[1])
+                                self.send(event)
                         case _:
                             event = MessageEvent(name=self.name, message=message)
                             self.send(event)
                 except:
                     pass
+  
+                
                 
     def send(self,event:Event):
         message = _Event.serialise(event)
@@ -111,6 +117,8 @@ class ChatClient:
         while self.running:
             try:
                 message_length_b = self.socket.recv(4)
+            except KeyboardInterrupt as e:
+                raise e
             except:
                 continue
             if not message_length_b:
@@ -118,6 +126,7 @@ class ChatClient:
             message_length = struct.unpack("!I",message_length_b)[0]
             message = self.socket.recv(message_length)
             self.receive(message)
+
     
     def receive(self, message:bytes):
         event = _Event.deserialise(message)
@@ -132,6 +141,10 @@ class ChatClient:
             case JoinEvent(channel=c):
                 print(f'[Server Message] You have joined the channel "{c}".', flush=True)
             case QuitEvent(name=name):
+                self.socket.close()
+                self.shutdown()
+            case KickEvent(target=t):
+                print(f'[Server Message] You are removed from the channel.', flush=True)
                 self.socket.close()
                 self.shutdown()
     
