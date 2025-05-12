@@ -71,7 +71,13 @@ class ChatClient:
                 try:
                     match message.split()[0]:
                         case "/send":
-                            ...
+                            if len(message.split()) != 3 or message != message.strip():
+                                print("[Server Message] Usage: /send target_client_username file_path", flush=True)
+                            elif message.split()[1] == self.name:
+                                print("[Server Message] Cannot send file to yourself.", flush=True)
+                            else:
+                                event = SendEvent(name=self.name, target=message.split()[1], file=message.split()[2])
+                                self.send(event)
                         case "/quit":
                             if len(message.split()) != 1 or message != message.strip():
                                 print("[Server Message] Usage: /quit", flush=True)
@@ -158,6 +164,8 @@ class ChatClient:
                     print(f'[Server Message] Channel "{allowed}" already has user {sys.argv[2]}.', flush=True)
                     sys.exit(2)
                 print(f"Welcome to chatclient, {self.name}.")
+            case SendEvent(name=n, target=t, file=f):
+                print("should not print", flush=True)
                 
     def shutdown(self):
         self.running = False

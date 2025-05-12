@@ -258,9 +258,10 @@ class ChannelServer:
                                 c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
 
     def _join(self, client: ChannelClientHandler) -> None:
-        self._clients[client.name] = client
-        print(f'[Server Message] {client.name} has joined the channel "{self.config.name}".', flush=True)      
-        client.join()
+        if self.running:
+            self._clients[client.name] = client
+            print(f'[Server Message] {client.name} has joined the channel "{self.config.name}".', flush=True)      
+            client.join()
 
     def _quit(self, name) -> None:
         self._clients.pop(name)
@@ -380,12 +381,15 @@ class ChannelClientHandler:
                         self.channel._join(self.channel._waitlist.pop(0))
                         for idx, c in enumerate(self.channel._waitlist):
                             c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
-                case SendEvent():
-                    ...
+                case SendEvent(name=n, target=receiver, file=f):
+                    r = self.channel._clients.get(receiver)
+                    if r != None:
+                        self.send(_Event.serialise(SendEvent(name=n, target=receiver, file=f)))
+                    else:
+                        self.send(_Event.serialise(MessageEvent(name="Server Message", message=f"{receiver} is not in the channel.")))
                 case WhisperEvent(name=sender, target=receiver, message=msg):
                     r = self.channel._clients.get(receiver)
                     if r != None:
-                        self.channel._events.put(event)
                         self.send(_Event.serialise(MessageEvent(name=f"{self.name} whispers to {receiver}", message=msg)))
                         r.send(_Event.serialise(MessageEvent(name=f"{sender} whispers to you", message=msg)))
                         print(f"[{sender} whispers to {receiver}] {msg}", flush=True)

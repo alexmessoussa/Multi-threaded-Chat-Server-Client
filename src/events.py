@@ -179,18 +179,44 @@ class EmptyEvent(_Event):
 @dataclass(kw_only=True)
 class SendEvent(_Event):
     type: ClassVar[Literal[EventType.SEND]] = EventType.SEND
-    message: str
-    
-    #target?
-    #name?
-    #file?
+    name: str
+    target: str
+    file: str
     
     def _serialise(self):
-        ...
+        return struct.pack(
+            f"!I{len(self.name)}sI{len(self.target)}sI{len(self.file)}s",
+            len(self.name),
+            self.name.encode(),
+            len(self.target),
+            self.target.encode(),
+            len(self.file),
+            self.file.encode(),
+        )
     
     @classmethod
-    def _deserialise(cls, data):
-        ...
+    def _deserialise(cls, data) -> SendEvent:
+        name_length = struct.unpack("!I", data[:4])[0]
+        name = struct.unpack(
+            f"{name_length}s",
+            data[4 : 4 + name_length],
+        )[0].decode()
+        target_length = struct.unpack("!I", data[4 + name_length : 8 + name_length])[0]
+        target = struct.unpack(
+            f"{target_length}s",
+            data[8 + name_length : 8 + name_length + target_length],
+        )[0].decode()
+        file_length = struct.unpack("!I", data[8 + name_length + target_length : 12 + name_length + target_length])[0]
+        file = struct.unpack(
+            f"{file_length}s",
+            data[12 + name_length + target_length: 12 + name_length + target_length + file_length],
+        )[0].decode()
+
+        return SendEvent(
+            name=name,
+            target=target,
+            file=file
+        )
 
 
 @dataclass(kw_only=True)
@@ -210,7 +236,6 @@ class WhisperEvent(_Event):
             len(self.message),
             self.message.encode(),
         )
-    
     
     @classmethod
     def _deserialise(cls, data) -> WhisperEvent:
