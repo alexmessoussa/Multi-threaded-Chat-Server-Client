@@ -14,6 +14,7 @@ import struct
 from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,JoinEvent,Event
 from collections.abc import Sequence
 
+
 def print_usage_and_exit():
     print("Usage: chatserver [afk_time] config_file", file=sys.stderr, flush=True)
     sys.exit(4)
@@ -227,8 +228,6 @@ class ChannelServer:
                             for idx, c in enumerate(self._waitlist):
                                 c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
 
-                    
-
     def _join(self, client: ChannelClientHandler) -> None:
         self._clients[client.name] = client
         print(f'[Server Message] {client.name} has joined the channel "{self.config.name}".', flush=True)      
@@ -299,23 +298,6 @@ class ChannelClientHandler:
                 break
             except:
                 break
-            # if message_length_b == b'':
-            #     self.running = False
-            #     self.channel._quit(self.name)
-            #     self.joined = False
-            #     print(f"[Server Message] {self.name} has left the channel.", flush=True)
-            #     for client in self.channel._clients:
-            #         if client != self.name and client not in self.channel._waitlist:
-            #             client_handler = self.channel._clients.get(client)
-            #             if client_handler != None:
-            #                 client_handler.send(_Event.serialise(MessageEvent(name="Server Message",message=f"{self.name} has left the channel.")))
-            #         else:
-            #             pass
-            #     if len(self.channel._waitlist):
-            #         self.channel._join(self.channel._waitlist.pop(0))
-            #         for idx, c in enumerate(self.channel._waitlist):
-            #             c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
-            #else:   
             if not message_length_b:
                 break
             self.receive(message)
@@ -396,13 +378,10 @@ class ChannelClientHandler:
                         
                     
 
-
 check_args()
-#start the server here?
 if len(sys.argv) == 3:
     channel_configs = load_channel_configs(sys.argv[2])
 else:
     channel_configs = load_channel_configs(sys.argv[1])
-
 server = ChatServer(channel_configs=channel_configs)
 sys.exit()

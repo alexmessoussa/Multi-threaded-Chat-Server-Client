@@ -10,6 +10,7 @@ from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,Kic
 from socket import AF_INET, SOCK_STREAM, socket
 import select
 
+
 def print_usage_and_exit():
     print("Usage: chatclient port_number client_username", file=sys.stderr, flush=True)
     sys.exit(3)
@@ -103,8 +104,6 @@ class ChatClient:
                 except:
                     pass
   
-                
-                
     def send(self,event:Event):
         message = _Event.serialise(event)
         length = len(message)
@@ -125,7 +124,6 @@ class ChatClient:
             message = self.socket.recv(message_length)
             self.receive(message)
 
-    
     def receive(self, message:bytes):
         event = _Event.deserialise(message)
 
@@ -161,17 +159,16 @@ class ChatClient:
                     sys.exit(2)
                 print(f"Welcome to chatclient, {self.name}.")
                 
-    
     def shutdown(self):
         self.running = False
         self.socket.close()
         if threading.current_thread() is not self._receive_thread:
             self._receive_thread.join()
         sys.exit(0)
+
  
 
 check_args()    
-
 client = ChatClient(name=sys.argv[2])
 try:
     client.interact()
