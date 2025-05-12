@@ -229,10 +229,21 @@ class ChannelServer:
                     if target_client:
                         try:
                             mute_seconds = int(d)
+                            if mute_seconds <= 0:
+                                raise ValueError
+                            target_client.original_muted = d
                             target_client.mute_expiry = time() + mute_seconds
                             target_client.send(_Event.serialise(MessageEvent(name="Server Message", message=f'You have been muted for {mute_seconds} seconds.')))
+                            print(f'[Server Message] Muted {t} for {d} seconds.', flush=True)
+                            for client in self._clients:
+                                if client != t and client not in self._waitlist:
+                                    client_handler = self._clients.get(client)
+                                    if client_handler != None:
+                                        client_handler.send(_Event.serialise(MessageEvent(name="Server Message", message=f'{t} has been muted for {d} seconds.')))
+                                else:
+                                    pass
                         except ValueError:
-                            print(f"[Server Message] Invalid duration for mute.", flush=True)
+                            print(f"[Server Message] Invalid mute duration.", flush=True)                        
                     else:
                         print(f"[Server Message] {t} is not in the channel.", flush=True)
                 case EmptyEvent():
@@ -277,6 +288,7 @@ class ChannelClientHandler:
     mute_expiry: float = 0.0
     joined: bool = False
     running: bool = True
+    original_muted: int = field(init=False)
 
     def __post_init__(self) -> None:
         self.name = self.socket.recv(1024).decode()
@@ -294,8 +306,8 @@ class ChannelClientHandler:
     def is_muted(self):
         return time() < self.mute_expiry
     
-    def remaining_mute(self):
-        return max(0, self.mute_expiry - time())
+    def remaining_mute(self) -> int:
+        return int(max(0, self.mute_expiry - time()))
     
     def join(self) -> None:
         self.joined = True
@@ -351,7 +363,7 @@ class ChannelClientHandler:
                         print(f"[{n}] {m}", flush=True)
                         self.channel.broadcast(event)
                     elif self.is_muted:
-                        self.send(_Event.serialise(MessageEvent(name="Server Message", message=f'You are still in mute for {self.remaining_mute()} seconds.')))
+                        self.send(_Event.serialise(MessageEvent(name="Server Message", message=f'You are still in mute for {self.original_muted} seconds.')))
                 case QuitEvent(name=name):
                     self.channel._quit(name)
                     self.send(_Event.serialise(QuitEvent(name=name)))
