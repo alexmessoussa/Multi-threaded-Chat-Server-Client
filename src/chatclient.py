@@ -98,7 +98,7 @@ class ChatClient:
                             if len(message.split()) != 2 or message != message.strip():
                                 print("[Server Message] Usage: /switch channel_name", flush=True)
                             else:    
-                                event = SwitchEvent(name=self.name, channel=message[1])
+                                event = SwitchEvent(name=self.name, channel=message.split()[1])
                                 self.send(event)
                         case _:
                             event = MessageEvent(name=self.name, message=message)
@@ -147,6 +147,22 @@ class ChatClient:
                 print(f'[Server Message] You are removed from the channel.', flush=True)
                 self.socket.close()
                 self.shutdown()
+            case SwitchEvent(name=name, channel=channel_port):
+                self.socket.close()
+                port = int(channel_port)
+                self.socket = socket(AF_INET, SOCK_STREAM)
+                try:
+                    self.socket.connect(('localhost', port))
+                    self.socket.send(name.encode())
+                except:
+                    self.shutdown()
+                self.socket.settimeout(1)
+                allowed = self.socket.recv(1024).decode()
+                if allowed != "Y":
+                    print(f'[Server Message] Channel "{allowed}" already has user {sys.argv[2]}.', flush=True)
+                    sys.exit(2)
+                print(f"Welcome to chatclient, {self.name}.")
+                
     
     def shutdown(self):
         self.running = False

@@ -353,7 +353,26 @@ class ChannelClientHandler:
                     for channel in self.channel.server._channels:
                         self.send(_Event.serialise(MessageEvent(name="Channel", message=f"{channel.config.name} {channel.config.port} Capacity: {len(channel._clients)}/{channel.config.capacity}, Queue: {len(channel._waitlist)}")))
                 case SwitchEvent(name=name, channel=channel_name):
-                    ...
+                    original_channel = self.channel
+                    for channel in self.channel.server._channels:
+                        if channel.config.name == channel_name:
+                            if name in channel.client_names:
+                                self.send(_Event.serialise(MessageEvent(name="Server Message", message=f'Channel "{channel.config.name}" already has user {name}.')))
+                                break
+                            else:
+                                self.channel._quit(name)
+                                self.joined = False
+                                print(f'[Server Message] {name} has left the channel.', flush=True)
+                                original_channel.broadcast(event=MessageEvent(name="Server Message", message=f"{name} has left the channel."))
+                                if len(original_channel._waitlist):
+                                    original_channel._join(self.channel._waitlist.pop(0))
+                                    for idx, c in enumerate(original_channel._waitlist):
+                                        c.send(_Event.serialise(MessageEvent(name="Server Message" ,message=f"You are in the waiting queue and there are {idx} user(s) ahead of you.")))
+                                self.send(_Event.serialise(SwitchEvent(name=name, channel=str(channel.config.port))))
+                                break
+                    else:
+                        self.send(_Event.serialise(MessageEvent(name="Server Message", message=f'Channel "{channel_name}" does not exist.')))
+                        
                     
 
 
