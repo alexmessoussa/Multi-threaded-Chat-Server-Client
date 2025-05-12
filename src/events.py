@@ -155,6 +155,7 @@ class ShutdownEvent(_Event):
 class MuteEvent(_Event):
     type: ClassVar[Literal[EventType.MUTE]] = EventType.MUTE
     target: str
+    duration: int
 
     def _serialise(self) -> bytes:
         raise RuntimeError("mute not serialisable")

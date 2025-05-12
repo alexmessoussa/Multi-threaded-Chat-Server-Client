@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 import struct
 from events import _Event, MessageEvent,QuitEvent,WhisperEvent,ShutdownEvent,KickEvent,MuteEvent,EmptyEvent,SendEvent,ListEvent,SwitchEvent,JoinEvent,Event
 from collections.abc import Sequence
+from time import time
 
 
 def print_usage_and_exit():
@@ -117,7 +118,15 @@ class ChatServer:
                             else:
                                 print(f'[Server Message] Channel "{command[1]}" does not exist.', flush=True)                                
                     case "/mute":
-                        ...
+                        if message != message.strip() or len(command) != 4:
+                            print("Usage: /mute channel_name client_username duration", flush=True)
+                        else:
+                            for channel in self._channels:
+                                if channel.config.name == command[1]:
+                                    channel._events.put(MuteEvent(target=command[2], duration=command[3]))
+                                    break
+                            else:
+                                print(f'[Server Message] Channel "{command[1]}" does not exist.', flush=True)
                     case "/empty":
                         if message != message.strip() or len(command) != 2:
                             print("Usage: /empty channel_name", flush=True)
@@ -215,8 +224,17 @@ class ChannelServer:
                         print(f'[Server Message] {t} is not in the channel.', flush=True)
                 case ShutdownEvent():
                     self.running = False
-                case MuteEvent():
-                    ...
+                case MuteEvent(target=t, duration=d):
+                    target_client = self._clients.get(t)
+                    if target_client:
+                        try:
+                            mute_seconds = int(d)
+                            target_client.mute_expiry = time() + mute_seconds
+                            target_client.send(_Event.serialise(MessageEvent(name="Server Message", message=f'You have been muted for {mute_seconds} seconds.')))
+                        except ValueError:
+                            print(f"[Server Message] Invalid duration for mute.", flush=True)
+                    else:
+                        print(f"[Server Message] {t} is not in the channel.", flush=True)
                 case EmptyEvent():
                     print(f'[Server Message] "{self.config.name}" has been emptied.', flush=True)
                     for c in list(self._clients.values()):
@@ -256,7 +274,7 @@ class ChannelClientHandler:
     socket: socket
     channel: ChannelServer
     name: str = field(init=False)
-    muted: bool = False
+    mute_expiry: float = 0.0
     joined: bool = False
     running: bool = True
 
@@ -271,6 +289,13 @@ class ChannelClientHandler:
             self.socket.send(b"Y")
             receive_thread = Thread(target=self.receive_handler)
             receive_thread.start()
+    
+    @property
+    def is_muted(self):
+        return time() < self.mute_expiry
+    
+    def remaining_mute(self):
+        return max(0, self.mute_expiry - time())
     
     def join(self) -> None:
         self.joined = True
@@ -321,10 +346,12 @@ class ChannelClientHandler:
         event = _Event.deserialise(message)
         match event:
                 case MessageEvent(name=n, message=m):
-                    if self.joined and not self.muted:
+                    if self.joined and not self.is_muted:
                         assert self.name == n
                         print(f"[{n}] {m}", flush=True)
                         self.channel.broadcast(event)
+                    elif self.is_muted:
+                        self.send(_Event.serialise(MessageEvent(name="Server Message", message=f'You are still in mute for {self.remaining_mute()} seconds.')))
                 case QuitEvent(name=name):
                     self.channel._quit(name)
                     self.send(_Event.serialise(QuitEvent(name=name)))
